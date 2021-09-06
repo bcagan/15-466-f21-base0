@@ -76,7 +76,7 @@ struct PongMode : Mode {
 	glm::vec2 ball = glm::vec2(0.0f, 0.0f);
 	glm::vec2 ball_velocity = glm::vec2(-1.0f, 0.0f);
 
-	uint32_t left_score = 79;
+	uint32_t left_score = 0;
 	uint32_t left_lives = 45;
 
 	float ai_offset = 0.0f;
