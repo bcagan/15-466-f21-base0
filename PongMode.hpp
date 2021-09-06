@@ -47,7 +47,6 @@ struct PongMode : Mode {
 	virtual bool handle_event(SDL_Event const &, glm::uvec2 const &window_size) override;
 	virtual void update(float elapsed) override;
 	virtual void draw(glm::uvec2 const &drawable_size) override;
-	virtual bool restart() override; //Prompts user if they want to restart or not
 	virtual bool curGameState() override; 
 	//----- game state -----
 
@@ -78,7 +77,7 @@ struct PongMode : Mode {
 	glm::vec2 ball_velocity = glm::vec2(-1.0f, 0.0f);
 
 	uint32_t left_score = 0;
-	uint32_t left_lives = 44;
+	uint32_t left_lives = 45;
 
 	float ai_offset = 0.0f;
 	float ai_offset_update = 0.0f;

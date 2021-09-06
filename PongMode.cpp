@@ -17,10 +17,6 @@ bool PongMode::curGameState() {
 	return gameState;
 }
 
-bool PongMode::restart() {
-	return true;
-}
-
 //Points is the current point count of player (just left_points)
 void PongMode::newGate(unsigned int points) {
 
@@ -245,15 +241,17 @@ void PongMode::update(float elapsed) {
 
 	ball += elapsed * speed_multiplier * ball_velocity;
 
-	if (topBlock.y + block_radius.y >= maxTop * 2 * court_radius.y - court_radius.y) leftUp = false;
-	else if (topBlock.y - block_radius.y <= minBottom * 2 * court_radius.y - court_radius.y) leftUp = true;
-	if (bottomBlock.y + block_radius.y>= maxTop * 2 * court_radius.y - court_radius.y) rightUp = false;
-	else if (bottomBlock.y - block_radius.y <= minBottom * 2 * court_radius.y - court_radius.y) rightUp = true;
+	if (moveBlocks) {
+		if (topBlock.y + block_radius.y >= maxTop * 2 * court_radius.y - court_radius.y) leftUp = false;
+		else if (topBlock.y - block_radius.y <= minBottom * 2 * court_radius.y - court_radius.y) leftUp = true;
+		if (bottomBlock.y + block_radius.y >= maxTop * 2 * court_radius.y - court_radius.y) rightUp = false;
+		else if (bottomBlock.y - block_radius.y <= minBottom * 2 * court_radius.y - court_radius.y) rightUp = true;
 
-	if (leftUp) topBlock.y += elapsed*blockUpdate;
-	else topBlock.y -= elapsed*blockUpdate;
-	if (rightUp) bottomBlock.y += elapsed * blockUpdate;
-	else bottomBlock.y -= elapsed * blockUpdate;
+		if (leftUp) topBlock.y += elapsed * blockUpdate;
+		else topBlock.y -= elapsed * blockUpdate;
+		if (rightUp) bottomBlock.y += elapsed * blockUpdate;
+		else bottomBlock.y -= elapsed * blockUpdate;
+	}
 
 	//---- collision handling ----
 
@@ -364,8 +362,11 @@ void PongMode::update(float elapsed) {
 		if (ball_velocity.x > 0.0f) {
 			left_lives--;
 			if (left_lives == 0) gameState = false;
-			moveBallLeft();
-			newGate(left_score); //Should reset gate even though they lost to avoid cheating
+			else {
+				moveBallLeft();
+				newGate(left_score); //Should reset gate even though they lost to avoid cheating
+			}
+			assert(left_lives > 0 || !gameState);
 		}
 	}
 	if (ball.x < -court_radius.x + ball_radius.x) {
