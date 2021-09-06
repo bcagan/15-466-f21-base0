@@ -13,12 +13,6 @@
 #define STATIONARY_PAD 1
 #define TOO_CLOSE 2
 
-/*
-* TO DO
-* Submit
-* Read through main
-*/
-
 bool PongMode::curGameState() {
 	return gameState;
 }
