@@ -7,8 +7,105 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <random>
+#include<chrono>
+
+#define MOVING_PAD 0
+#define STATIONARY_PAD 1
+#define TOO_CLOSE 2
+
+/*
+* TO DO
+* Submit
+* Read through main
+*/
+
+bool PongMode::curGameState() {
+	return gameState;
+}
+
+bool PongMode::restart() {
+	return true;
+}
+
+//Points is the current point count of player (just left_points)
+void PongMode::newGate(unsigned int points) {
+
+	//Setting level and gap params
+	unsigned int level = (points / levelPoints % 10) + 1; //In game level (goes up to 10)
+	if (points / levelPoints >= 10) useEarlier = true;
+	if (points / levelPoints >= 20) moveBlocks = true;
+	if(points / levelPoints >= 20) bottomBlock.x = newRightBlock.x;
+	float ratio = (maxGap - minGap) / 10.f; //How much to decreases size per level
+	float curGap = maxGap - (float) level * ratio; //Update gap and cap at min (level 10 +)
+	if (curGap <= minGap) curGap = minGap; 
+
+	//Generating random gate
+	unsigned seed = (unsigned int) std::chrono::system_clock::now().time_since_epoch().count(); //Creating seed,
+	//Found seed function from http://www.cplusplus.com/reference/random/uniform_real_distribution/operator()/
+	std::uniform_real_distribution < double > dist(0.0, 100.0 * (double) maxTop - 100.0*(double)(curGap + minBottom));
+	float curTop = (float) dist(std::default_random_engine(seed))/100.f + curGap + minBottom; //Randomly make new gate (top of gate gap)
+	dist.reset();
+
+	auto givenBackTop = [this](float curTop, float curGap, unsigned seed) {
+		std::uniform_real_distribution < double > distDiv(1.5, 3.0);
+		float seedRes = (float)distDiv(std::default_random_engine(seed));
+		bool justBottom = false;
+		float beforeUp = curTop + yDivXOffset * defXOffset + curGap/seedRes;
+		if (beforeUp >= maxTop + 0.03333) justBottom = true; //Error to make edge cases feasible without limiting the possible places for second gate
+		bool justTop = false;
+		float beforeDown = curTop - yDivXOffset * defXOffset - curGap/seedRes;
+		if (beforeDown - curGap <= minBottom) justTop = true;
+		assert(justTop || beforeDown >= minBottom + curGap);
+		assert(beforeUp >= minBottom + curGap);
+		if (justBottom)return beforeDown;
+		if (justTop) return beforeUp;
+		assert(beforeDown >= minBottom + curGap && beforeUp >= minBottom + curGap && beforeUp > beforeDown);
+		std::uniform_real_distribution < double > dist(0.0, 1.0);
+		if(dist(std::default_random_engine(seed)) >= 0.5) return beforeDown;
+		return beforeUp;
+	};
+
+	//Creating gate coordinates
+	topRadius = glm::vec2(gateWidth, (1.0f - curTop) * court_radius.y + minBottom / 2); 
+	bottomRadius = glm::vec2(gateWidth, (curTop - curGap) * court_radius.y);
+	float topY = ((1.0f - curTop)/2 + curTop) * 2 * court_radius.y - court_radius.y;
+	topCenter = glm::vec2(gateX, topY);
+	float bottomY = bottomRadius.y - court_radius.y;
+	bottomCenter = glm::vec2(gateX, bottomY);
+	assert(bottomY - bottomRadius.y <= -0.499*court_radius.y);
+
+	//Creating earlier gate coordinates based off of first gate coordinates
+	float curTopB = givenBackTop(curTop, curGap, seed);
+	assert(curTopB - curGap >= minBottom - 0.0005f);
+	topRadiusB = glm::vec2(gateWidth, (1.0f - curTopB) * court_radius.y + minBottom / 2);
+	bottomRadiusB = glm::vec2(gateWidth, (curTopB - curGap) * court_radius.y);
+	float topYB = ((1.0f - curTopB) / 2 + curTopB) * 2 * court_radius.y - court_radius.y;
+	topCenterB = glm::vec2(gateX - defXOffset*2*court_radius.x - 2 *gateWidth, topYB);
+	float bottomYB = bottomRadiusB.y - court_radius.y;
+	bottomCenterB = glm::vec2(gateX - defXOffset * 2 * court_radius.x - 2 * gateWidth, bottomYB);
+	assert(bottomYB - bottomRadiusB.y <= -0.499 * court_radius.y);
+	assert(topYB > bottomYB);
+	if (useEarlier) { //Make sure gap isn't right where player is to avoid cheating
+		if (recurLimit < 10 && abs(curTopB - curGap / 2 - left_paddle.y) <= curGap / TOO_CLOSE) {
+			recurLimit++;
+			newGate(left_score);
+		}
+	}
+	else {
+		if (recurLimit < 10 && abs(curTop - curGap / 2 - left_paddle.y) <= curGap / TOO_CLOSE) {
+			recurLimit++;
+			newGate(left_score);
+		}
+	}
+	recurLimit = 0; //Avoid infinite recursion
+}
 
 PongMode::PongMode() {
+
+	gameState = true;
+
+	//Set up gate parameters
+	newGate(left_score);
 
 	//set up trail as if ball has been here for 'forever':
 	ball_trail.clear();
@@ -137,74 +234,115 @@ void PongMode::update(float elapsed) {
 
 	//----- paddle update -----
 
-	{ //right player ai:
-		ai_offset_update -= elapsed;
-		if (ai_offset_update < elapsed) {
-			//update again in [0.5,1.0) seconds:
-			ai_offset_update = (mt() / float(mt.max())) * 0.5f + 0.5f;
-			ai_offset = (mt() / float(mt.max())) * 2.5f - 1.25f;
-		}
-		if (right_paddle.y < ball.y + ai_offset) {
-			right_paddle.y = std::min(ball.y + ai_offset, right_paddle.y + 2.0f * elapsed);
-		} else {
-			right_paddle.y = std::max(ball.y + ai_offset, right_paddle.y - 2.0f * elapsed);
-		}
-	}
-
-	//clamp paddles to court:
-	right_paddle.y = std::max(right_paddle.y, -court_radius.y + paddle_radius.y);
-	right_paddle.y = std::min(right_paddle.y,  court_radius.y - paddle_radius.y);
-
 	left_paddle.y = std::max(left_paddle.y, -court_radius.y + paddle_radius.y);
 	left_paddle.y = std::min(left_paddle.y,  court_radius.y - paddle_radius.y);
 
+
 	//----- ball update -----
 
-	//speed of ball doubles every four points:
-	float speed_multiplier = 4.0f * std::pow(2.0f, (left_score + right_score) / 4.0f);
+	//speed of ball doubles every (1/2 of total needef or level up) points for each level up, before slowing 3/4 with the next level:
+	int speedMultVal = ((left_score) / (3 * levelPoints));
+	if (left_score / levelPoints / 10 == 1 || left_score / levelPoints / 10 == 2) speedMultVal  = (left_score % (levelPoints * 10)) / (3*levelPoints);
+	else if (left_score / levelPoints / 10 >= 3)  speedMultVal = (left_score - 3* (levelPoints * 10)) / (3 * levelPoints);
+	float speed_multiplier = 4.0f * std::pow(1.3333f, (float) speedMultVal);
 
 	//velocity cap, though (otherwise ball can pass through paddles):
 	speed_multiplier = std::min(speed_multiplier, 10.0f);
 
 	ball += elapsed * speed_multiplier * ball_velocity;
 
+	if (topBlock.y + block_radius.y >= maxTop * 2 * court_radius.y - court_radius.y) leftUp = false;
+	else if (topBlock.y - block_radius.y <= minBottom * 2 * court_radius.y - court_radius.y) leftUp = true;
+	if (bottomBlock.y + block_radius.y>= maxTop * 2 * court_radius.y - court_radius.y) rightUp = false;
+	else if (bottomBlock.y - block_radius.y <= minBottom * 2 * court_radius.y - court_radius.y) rightUp = true;
+
+	if (leftUp) topBlock.y += elapsed*blockUpdate;
+	else topBlock.y -= elapsed*blockUpdate;
+	if (rightUp) bottomBlock.y += elapsed * blockUpdate;
+	else bottomBlock.y -= elapsed * blockUpdate;
+
 	//---- collision handling ----
 
+	//Reset ball position along with new gate
+
+	auto moveBallLeft = [this]() {
+		ball = glm::vec2(-1.2f,left_paddle.y);
+		ball_velocity = glm::vec2(-1.0f, 0.0f);
+		if (ball.y < -court_radius.y + paddle_radius.y + ball_radius.y) ball.y = 1.1f * paddle_radius.y + ball_radius.y - court_radius.y;
+		if (ball.y > court_radius.y - paddle_radius.y - ball_radius.y) ball.y = -1.1f * paddle_radius.y - ball_radius.y + court_radius.y;
+
+	};
+
+	//Sees purely if there is an overlap, ie collision, between balls and both gates
+	auto gateCollide = [this]() {
+		//After
+		//Top
+		glm::vec2 radius = topRadius;
+		glm::vec2 min = glm::max(topCenter - radius, ball - ball_radius);
+		glm::vec2 max = glm::min(topCenter + radius, ball + ball_radius);
+		if (!(min.x > max.x || min.y > max.y)) return true;
+		//Bottom
+		radius = bottomRadius;
+		min = glm::max(bottomCenter - radius, ball - ball_radius);
+		max = glm::min(bottomCenter + radius, ball + ball_radius);
+		if (!(min.x > max.x || min.y > max.y)) return true;
+		//Before
+		//Top
+		radius = topRadiusB;
+		min = glm::max(topCenterB - radius, ball - ball_radius);
+		max = glm::min(topCenterB + radius, ball + ball_radius);
+		if (!(min.x > max.x || min.y > max.y) && useEarlier) return true;
+		//Bottom
+		radius = bottomRadiusB;
+		min = glm::max(bottomCenterB - radius, ball - ball_radius);
+		max = glm::min(bottomCenterB + radius, ball + ball_radius);
+		if (!(min.x > max.x || min.y > max.y) && useEarlier) return true;
+		return false;
+		
+	};
+
 	//paddles:
-	auto paddle_vs_ball = [this](glm::vec2 const &paddle) {
+	auto paddle_vs_ball = [this](glm::vec2 const &paddle, int whichPad) {
 		//compute area of overlap:
-		glm::vec2 min = glm::max(paddle - paddle_radius, ball - ball_radius);
-		glm::vec2 max = glm::min(paddle + paddle_radius, ball + ball_radius);
+		glm::vec2 radius = paddle_radius;
+		if (whichPad == STATIONARY_PAD) radius = block_radius;
+		glm::vec2 min = glm::max(paddle - radius, ball - ball_radius);
+		glm::vec2 max = glm::min(paddle + radius, ball + ball_radius);
 
 		//if no overlap, no collision:
 		if (min.x > max.x || min.y > max.y) return;
 
+		//Block always inverses
+		float difOffset = 1.0f;
+		if (whichPad == STATIONARY_PAD) difOffset = -1.0f;
+
 		if (max.x - min.x > max.y - min.y) {
 			//wider overlap in x => bounce in y direction:
 			if (ball.y > paddle.y) {
-				ball.y = paddle.y + paddle_radius.y + ball_radius.y;
-				ball_velocity.y = std::abs(ball_velocity.y);
+				ball.y = paddle.y +(radius.y + ball_radius.y);
+				ball_velocity.y =  std::abs(ball_velocity.y);
 			} else {
-				ball.y = paddle.y - paddle_radius.y - ball_radius.y;
+				ball.y = paddle.y - radius.y - ball_radius.y;
 				ball_velocity.y = -std::abs(ball_velocity.y);
 			}
 		} else {
 			//wider overlap in y => bounce in x direction:
 			if (ball.x > paddle.x) {
-				ball.x = paddle.x + paddle_radius.x + ball_radius.x;
+				ball.x = paddle.x + (radius.x + ball_radius.x);
 				ball_velocity.x = std::abs(ball_velocity.x);
 			} else {
-				ball.x = paddle.x - paddle_radius.x - ball_radius.x;
+				ball.x = paddle.x - radius.x - ball_radius.x;
 				ball_velocity.x = -std::abs(ball_velocity.x);
 			}
 			//warp y velocity based on offset from paddle center:
-			float vel = (ball.y - paddle.y) / (paddle_radius.y + ball_radius.y);
-			ball_velocity.y = glm::mix(ball_velocity.y, vel, 0.75f);
+			float vel = difOffset*(ball.y - paddle.y) / (radius.y + ball_radius.y);
+			ball_velocity.y = glm::mix(ball_velocity.y, vel, 0.75f);  //What? 
 		}
 	};
-	paddle_vs_ball(left_paddle);
-	paddle_vs_ball(right_paddle);
-
+	paddle_vs_ball(left_paddle, MOVING_PAD);
+	paddle_vs_ball(topBlock, STATIONARY_PAD);
+	paddle_vs_ball(bottomBlock, STATIONARY_PAD);
+	  
 	//court walls:
 	if (ball.y > court_radius.y - ball_radius.y) {
 		ball.y = court_radius.y - ball_radius.y;
@@ -222,15 +360,24 @@ void PongMode::update(float elapsed) {
 	if (ball.x > court_radius.x - ball_radius.x) {
 		ball.x = court_radius.x - ball_radius.x;
 		if (ball_velocity.x > 0.0f) {
-			ball_velocity.x = -ball_velocity.x;
-			left_score += 1;
+			moveBallLeft();
+			left_score += 1; 
+			newGate(left_score);
+		}
+	}
+	if (gateCollide()) { 
+		ball.x = gateX - ball_radius.x;
+		if (ball_velocity.x > 0.0f) {
+			left_lives--;
+			if (left_lives == 0) gameState = false;
+			moveBallLeft();
+			newGate(left_score); //Should reset gate even though they lost to avoid cheating
 		}
 	}
 	if (ball.x < -court_radius.x + ball_radius.x) {
-		ball.x = -court_radius.x + ball_radius.x;
+		ball.x = -court_radius.x  + ball_radius.x;
 		if (ball_velocity.x < 0.0f) {
 			ball_velocity.x = -ball_velocity.x;
-			right_score += 1;
 		}
 	}
 
@@ -253,8 +400,13 @@ void PongMode::update(float elapsed) {
 void PongMode::draw(glm::uvec2 const &drawable_size) {
 	//some nice colors from the course web page:
 	#define HEX_TO_U8VEC4( HX ) (glm::u8vec4( (HX >> 24) & 0xff, (HX >> 16) & 0xff, (HX >> 8) & 0xff, (HX) & 0xff ))
-	const glm::u8vec4 bg_color = HEX_TO_U8VEC4(0x193b59ff);
+	glm::u8vec4 bgCols[10] = { HEX_TO_U8VEC4(0x193b59ff), HEX_TO_U8VEC4(0x038a8aff),
+		HEX_TO_U8VEC4(0x5040ffff), HEX_TO_U8VEC4(0xcf8072ff), HEX_TO_U8VEC4(0xbe9640ff),
+		HEX_TO_U8VEC4(0x852982ff), HEX_TO_U8VEC4(0x075f1aff), HEX_TO_U8VEC4(0xa8afaaff),
+		HEX_TO_U8VEC4(0xb9aee6ff), HEX_TO_U8VEC4(0x000000ff) };
 	const glm::u8vec4 fg_color = HEX_TO_U8VEC4(0xf2d2b6ff);
+	const glm::u8vec4 block_color = HEX_TO_U8VEC4(0x387f3aff);
+	const glm::u8vec4 block_shadow_color = HEX_TO_U8VEC4(0x0d6410ff);
 	const glm::u8vec4 shadow_color = HEX_TO_U8VEC4(0xf2ad94ff);
 	const std::vector< glm::u8vec4 > trail_colors = {
 		HEX_TO_U8VEC4(0xf2ad9488),
@@ -293,8 +445,15 @@ void PongMode::draw(glm::uvec2 const &drawable_size) {
 	draw_rectangle(glm::vec2( court_radius.x+wall_radius, 0.0f)+s, glm::vec2(wall_radius, court_radius.y + 2.0f * wall_radius), shadow_color);
 	draw_rectangle(glm::vec2( 0.0f,-court_radius.y-wall_radius)+s, glm::vec2(court_radius.x, wall_radius), shadow_color);
 	draw_rectangle(glm::vec2( 0.0f, court_radius.y+wall_radius)+s, glm::vec2(court_radius.x, wall_radius), shadow_color);
-	draw_rectangle(left_paddle+s, paddle_radius, shadow_color);
-	draw_rectangle(right_paddle+s, paddle_radius, shadow_color);
+	draw_rectangle(left_paddle + s, paddle_radius, shadow_color);
+	draw_rectangle(topBlock + s, block_radius, block_shadow_color);
+	draw_rectangle(bottomBlock + s, block_radius, block_shadow_color);
+	if(useEarlier){
+		draw_rectangle(topCenterB + s, topRadiusB, shadow_color);
+		draw_rectangle(bottomCenterB + s, bottomRadiusB, shadow_color);
+	}
+	draw_rectangle(topCenter + s, topRadius, shadow_color);
+	draw_rectangle(bottomCenter + s, bottomRadius, shadow_color);
 	draw_rectangle(ball+s, ball_radius, shadow_color);
 
 	//ball's trail:
@@ -348,21 +507,29 @@ void PongMode::draw(glm::uvec2 const &drawable_size) {
 	draw_rectangle(glm::vec2( court_radius.x+wall_radius, 0.0f), glm::vec2(wall_radius, court_radius.y + 2.0f * wall_radius), fg_color);
 	draw_rectangle(glm::vec2( 0.0f,-court_radius.y-wall_radius), glm::vec2(court_radius.x, wall_radius), fg_color);
 	draw_rectangle(glm::vec2( 0.0f, court_radius.y+wall_radius), glm::vec2(court_radius.x, wall_radius), fg_color);
+	draw_rectangle(topBlock, block_radius, block_color);
+	draw_rectangle(bottomBlock, block_radius, block_color);
 
-	//paddles:
+	//paddle:
 	draw_rectangle(left_paddle, paddle_radius, fg_color);
-	draw_rectangle(right_paddle, paddle_radius, fg_color);
-	
+
+	//gate:
+	draw_rectangle(topCenter, topRadius, fg_color); //Top
+	draw_rectangle(bottomCenter, bottomRadius, fg_color); //Bottom
+	if (useEarlier) {
+		draw_rectangle(topCenterB, topRadiusB, fg_color); //Top Before
+		draw_rectangle(bottomCenterB, bottomRadiusB, fg_color); //Bottom Before
+	}
 
 	//ball:
 	draw_rectangle(ball, ball_radius, fg_color);
 
 	//scores:
 	glm::vec2 score_radius = glm::vec2(0.1f, 0.1f);
-	for (uint32_t i = 0; i < left_score; ++i) {
+	/*for (uint32_t i = 0; i < left_score; ++i) {
 		draw_rectangle(glm::vec2( -court_radius.x + (2.0f + 3.0f * i) * score_radius.x, court_radius.y + 2.0f * wall_radius + 2.0f * score_radius.y), score_radius, fg_color);
-	}
-	for (uint32_t i = 0; i < right_score; ++i) {
+	}*/
+	for (uint32_t i = 1; i < left_lives; ++i) { //TO DO: Unknown if want to change this
 		draw_rectangle(glm::vec2( court_radius.x - (2.0f + 3.0f * i) * score_radius.x, court_radius.y + 2.0f * wall_radius + 2.0f * score_radius.y), score_radius, fg_color);
 	}
 
@@ -412,6 +579,7 @@ void PongMode::draw(glm::uvec2 const &drawable_size) {
 	//---- actual drawing ----
 
 	//clear the color buffer:
+	glm::u8vec4 bg_color = bgCols[(left_score / levelPoints) % 10];
 	glClearColor(bg_color.r / 255.0f, bg_color.g / 255.0f, bg_color.b / 255.0f, bg_color.a / 255.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 

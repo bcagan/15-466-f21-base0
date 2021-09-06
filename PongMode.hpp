@@ -16,25 +16,69 @@ struct PongMode : Mode {
 	PongMode();
 	virtual ~PongMode();
 
+	//Function to create new gates based on current score
+	void newGate(unsigned int score);
+	//Gap will be set from a percentage of veritcal play area. Will be converted to actual coordinates based on play area
+	float minGap = 0.1f; //Can be set in testing
+	float maxGap = 0.33f; //Can be set in testing
+	float minBottom = 0.1f;
+	float maxTop =  1.0f - minBottom;
+	int recurLimit = 0;
+
+	bool useEarlier = false; //Use a second gate before first
+	float defXOffset = 0.09f; //% offset between two gates
+	float yDivXOffset = 0.2f; // ratio offset added to the y gate offset regardless of additional offset related to gap
+
+	//Said actual coordinates
+	glm::vec2 topRadius;
+	glm::vec2 bottomRadius;
+	glm::vec2 topCenter;
+	glm::vec2 bottomCenter;
+
+	//"B"efore gate (earlier gate after level 10)
+	glm::vec2 topRadiusB;
+	glm::vec2 bottomRadiusB;
+	glm::vec2 topCenterB;
+	glm::vec2 bottomCenterB;
+
+	uint32_t levelPoints = 3;
+
 	//functions called by main loop:
 	virtual bool handle_event(SDL_Event const &, glm::uvec2 const &window_size) override;
 	virtual void update(float elapsed) override;
 	virtual void draw(glm::uvec2 const &drawable_size) override;
-
+	virtual bool restart() override; //Prompts user if they want to restart or not
+	virtual bool curGameState() override; 
 	//----- game state -----
+
+	bool gameState = true;
 
 	glm::vec2 court_radius = glm::vec2(7.0f, 5.0f);
 	glm::vec2 paddle_radius = glm::vec2(0.2f, 1.0f);
+	glm::vec2 block_radius = glm::vec2(0.2f, 0.5f);
 	glm::vec2 ball_radius = glm::vec2(0.2f, 0.2f);
+	float gateWidth = 0.2f; //Can be changed, x axis
+	glm::vec2 wallObj_radius = glm::vec2(0.05f, 5.0f);
 
 	glm::vec2 left_paddle = glm::vec2(-court_radius.x + 0.5f, 0.0f);
 	glm::vec2 right_paddle = glm::vec2( court_radius.x - 0.5f, 0.0f);
+	float gateX = court_radius.x - 2.0f;
+	glm::vec2 leftWall = glm::vec2(-court_radius.x, 0.0f);
+	glm::vec2 topBlock = glm::vec2(0.0f, court_radius.y/2.f);
+	glm::vec2 bottomBlock = glm::vec2(0.0f, -court_radius.y/2.f);
+	glm::vec2 newRightBlock = glm::vec2(1.5f, -court_radius.y / 2.f);
+
+
+	bool moveBlocks = false;
+	float blockUpdate = .75f;
+	bool leftUp = false;
+	bool rightUp = true;
 
 	glm::vec2 ball = glm::vec2(0.0f, 0.0f);
 	glm::vec2 ball_velocity = glm::vec2(-1.0f, 0.0f);
 
 	uint32_t left_score = 0;
-	uint32_t right_score = 0;
+	uint32_t left_lives = 44;
 
 	float ai_offset = 0.0f;
 	float ai_offset_update = 0.0f;

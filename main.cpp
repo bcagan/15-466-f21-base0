@@ -107,7 +107,7 @@ int main(int argc, char **argv) {
 	on_resize();
 
 	//This will loop until the current mode is set to null:
-	while (Mode::current) {
+	while (Mode::current && Mode::current->curGameState()) {
 		//every pass through the game loop creates one frame of output
 		//  by performing three steps:
 
@@ -154,6 +154,13 @@ int main(int argc, char **argv) {
 			elapsed = std::min(0.1f, elapsed);
 
 			Mode::current->update(elapsed);
+			if (!Mode::current->curGameState()) if (Mode::current->restart()) {
+				Mode::current->~Mode();
+				Mode::set_current(std::make_shared< PongMode >());
+			}
+			else {
+				Mode::set_current(NULL);
+			}
 			if (!Mode::current) break;
 		}
 
