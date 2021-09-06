@@ -13,6 +13,7 @@
 #define STATIONARY_PAD 1
 #define TOO_CLOSE 2
 
+//Returns gameState so it is accesible to main
 bool PongMode::curGameState() {
 	return gameState;
 }
@@ -35,20 +36,32 @@ void PongMode::newGate(unsigned int points) {
 	std::uniform_real_distribution < double > dist(0.0, 100.0 * (double) maxTop - 100.0*(double)(curGap + minBottom));
 	float curTop = (float) dist(std::default_random_engine(seed))/100.f + curGap + minBottom; //Randomly make new gate (top of gate gap)
 	dist.reset();
-
+	
+	//This lambda creates a new gate top for the before gate based on the after gate's top.
+	//@return - float, the percentage of the screen's y that the before gate's top is at
+	//@param - curTop - after gate's top in percentage, curGap - what percentage of the screen's y the gap should take
+	//seed - Seed created before to be used for random function (based on system clock)
 	auto givenBackTop = [this](float curTop, float curGap, unsigned seed) {
 		std::uniform_real_distribution < double > distDiv(1.5, 3.0);
+		//seedRes is intended to give a range of feasible but dynamic offsets for the before gap compared to after gap
 		float seedRes = (float)distDiv(std::default_random_engine(seed));
+
+		//See if putting gap above or below after goes out of bounds. If so, don't use
+		//Above gap is - yDivX ration * the x offset + a randomized 1/seedRes fraction of curGap above the after's gap
+		//Bottom is similar but below instead of above
 		bool justBottom = false;
 		float beforeUp = curTop + yDivXOffset * defXOffset + curGap/seedRes;
 		if (beforeUp >= maxTop + 0.03333) justBottom = true; //Error to make edge cases feasible without limiting the possible places for second gate
 		bool justTop = false;
 		float beforeDown = curTop - yDivXOffset * defXOffset - curGap/seedRes;
 		if (beforeDown - curGap <= minBottom) justTop = true;
+
 		assert(justTop || beforeDown >= minBottom + curGap);
 		assert(beforeUp >= minBottom + curGap);
 		if (justBottom)return beforeDown;
 		if (justTop) return beforeUp;
+
+		//If both are possible, do a coin flip to decide if to do above or below
 		assert(beforeDown >= minBottom + curGap && beforeUp >= minBottom + curGap && beforeUp > beforeDown);
 		std::uniform_real_distribution < double > dist(0.0, 1.0);
 		if(dist(std::default_random_engine(seed)) >= 0.5) return beforeDown;
@@ -67,6 +80,7 @@ void PongMode::newGate(unsigned int points) {
 	//Creating earlier gate coordinates based off of first gate coordinates
 	float curTopB = givenBackTop(curTop, curGap, seed);
 	assert(curTopB - curGap >= minBottom - 0.0005f);
+	//Creating actual coordinates based on new top
 	topRadiusB = glm::vec2(gateWidth, (1.0f - curTopB) * court_radius.y + minBottom / 2);
 	bottomRadiusB = glm::vec2(gateWidth, (curTopB - curGap) * court_radius.y);
 	float topYB = ((1.0f - curTopB) / 2 + curTopB) * 2 * court_radius.y - court_radius.y;
@@ -92,7 +106,7 @@ void PongMode::newGate(unsigned int points) {
 
 PongMode::PongMode() {
 
-	gameState = true;
+	gameState = true; //Game should always play if the object is constructed 
 
 	//Set up gate parameters
 	newGate(left_score);
@@ -241,13 +255,13 @@ void PongMode::update(float elapsed) {
 
 	ball += elapsed * speed_multiplier * ball_velocity;
 
-	if (moveBlocks) {
-		if (topBlock.y + block_radius.y >= maxTop * 2 * court_radius.y - court_radius.y) leftUp = false;
+	if (moveBlocks) { //Only update block pos after level 20
+		if (topBlock.y + block_radius.y >= maxTop * 2 * court_radius.y - court_radius.y) leftUp = false; //Reset y direction if bounds are hit
 		else if (topBlock.y - block_radius.y <= minBottom * 2 * court_radius.y - court_radius.y) leftUp = true;
 		if (bottomBlock.y + block_radius.y >= maxTop * 2 * court_radius.y - court_radius.y) rightUp = false;
 		else if (bottomBlock.y - block_radius.y <= minBottom * 2 * court_radius.y - court_radius.y) rightUp = true;
 
-		if (leftUp) topBlock.y += elapsed * blockUpdate;
+		if (leftUp) topBlock.y += elapsed * blockUpdate; //Depending on direction, update left and right blocks y based on elapsed delta in position
 		else topBlock.y -= elapsed * blockUpdate;
 		if (rightUp) bottomBlock.y += elapsed * blockUpdate;
 		else bottomBlock.y -= elapsed * blockUpdate;
@@ -357,11 +371,11 @@ void PongMode::update(float elapsed) {
 			newGate(left_score);
 		}
 	}
-	if (gateCollide()) { 
+	if (gateCollide()) {  //Checks hit with both gates
 		ball.x = gateX - ball_radius.x;
 		if (ball_velocity.x > 0.0f) {
 			left_lives--;
-			if (left_lives == 0) gameState = false;
+			if (left_lives == 0) gameState = false; //If out of lives, restart the game
 			else {
 				moveBallLeft();
 				newGate(left_score); //Should reset gate even though they lost to avoid cheating
@@ -443,7 +457,7 @@ void PongMode::draw(glm::uvec2 const &drawable_size) {
 	draw_rectangle(left_paddle + s, paddle_radius, shadow_color);
 	draw_rectangle(topBlock + s, block_radius, block_shadow_color);
 	draw_rectangle(bottomBlock + s, block_radius, block_shadow_color);
-	if(useEarlier){
+	if(useEarlier){ //Only draw second gate if after level 10
 		draw_rectangle(topCenterB + s, topRadiusB, shadow_color);
 		draw_rectangle(bottomCenterB + s, bottomRadiusB, shadow_color);
 	}
@@ -574,7 +588,7 @@ void PongMode::draw(glm::uvec2 const &drawable_size) {
 	//---- actual drawing ----
 
 	//clear the color buffer:
-	glm::u8vec4 bg_color = bgCols[(left_score / levelPoints) % 10];
+	glm::u8vec4 bg_color = bgCols[(left_score / levelPoints) % 10]; //BG Color is picked for a series in order based on level
 	glClearColor(bg_color.r / 255.0f, bg_color.g / 255.0f, bg_color.b / 255.0f, bg_color.a / 255.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 
